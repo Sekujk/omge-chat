@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat Aleatorio</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>Chat Aleatorio</h1>
+        
+        <!-- Pantalla inicial -->
+        <div id="inicio-screen">
+            <button id="btn-iniciar-chat">Iniciar Chat</button>
+        </div>
+        
+        <!-- Pantalla de búsqueda -->
+        <div id="buscando-screen" class="hidden">
+            <p>Buscando a alguien para chatear...</p>
+            <div class="spinner"></div>
+        </div>
+        
+        <!-- Pantalla de chat -->
+        <div id="chat-screen" class="hidden">
+            <div id="chat-messages"></div>
+            <div class="chat-controls">
+                <input type="text" id="mensaje-input" placeholder="Escribe un mensaje...">
+                <button id="btn-enviar">Enviar</button>
+                <button id="btn-siguiente">Siguiente</button>
+            </div>
+        </div>
+        
+        <!-- Pantalla desconectado -->
+        <div id="desconectado-screen" class="hidden">
+            <p>Tu compañero se ha desconectado.</p>
+            <button id="btn-nuevo-chat">Nuevo Chat</button>
+        </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="/js/main.js"></script>
+</body>
+</html>
