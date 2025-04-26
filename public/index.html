@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Chat Aleatorio</title>
     <link rel="stylesheet" href="/css/style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 </head>
 <body>
     <div class="container">
@@ -12,20 +13,24 @@
         
         <!-- Pantalla inicial -->
         <div id="inicio-screen">
-            <div class="preferences-container">
-                <h3>Preferencias</h3>
-                <div class="media-options">
-                    <label>
-                        <input type="checkbox" id="enable-video"> Video
-                    </label>
-                    <label>
-                        <input type="checkbox" id="enable-audio"> Audio
+            <div class="options">
+                <div class="option-group">
+                    <label class="option-label">
+                        <input type="checkbox" id="opcion-texto" checked> 
+                        <i class="fas fa-comment"></i> Texto
                     </label>
                 </div>
-                
-                <div class="interests-container">
-                    <h4>Intereses (opcional)</h4>
-                    <input type="text" id="interests-input" placeholder="deportes, música, películas...">
+                <div class="option-group">
+                    <label class="option-label">
+                        <input type="checkbox" id="opcion-audio"> 
+                        <i class="fas fa-microphone"></i> Audio
+                    </label>
+                </div>
+                <div class="option-group">
+                    <label class="option-label">
+                        <input type="checkbox" id="opcion-video"> 
+                        <i class="fas fa-video"></i> Video
+                    </label>
                 </div>
             </div>
             <button id="btn-iniciar-chat">Iniciar Chat</button>
@@ -35,20 +40,28 @@
         <div id="buscando-screen" class="hidden">
             <p>Buscando a alguien para chatear...</p>
             <div class="spinner"></div>
-            <button id="btn-cancelar-busqueda">Cancelar</button>
         </div>
         
         <!-- Pantalla de chat -->
         <div id="chat-screen" class="hidden">
-            <div class="media-container">
-                <div class="video-container">
-                    <video id="local-video" autoplay muted></video>
-                    <video id="remote-video" autoplay></video>
+            <div class="video-container">
+                <div class="video-wrapper">
+                    <video id="local-video" autoplay muted playsinline></video>
+                    <div class="video-label">Tú</div>
                 </div>
-                <div class="media-controls">
-                    <button id="toggle-video" class="media-btn">Pausar Video</button>
-                    <button id="toggle-audio" class="media-btn">Silenciar</button>
+                <div class="video-wrapper">
+                    <video id="remote-video" autoplay playsinline></video>
+                    <div class="video-label">Compañero</div>
                 </div>
+            </div>
+            
+            <div class="media-controls">
+                <button id="btn-toggle-video" class="media-btn">
+                    <i class="fas fa-video"></i>
+                </button>
+                <button id="btn-toggle-audio" class="media-btn">
+                    <i class="fas fa-microphone"></i>
+                </button>
             </div>
             
             <div id="chat-messages"></div>
@@ -64,18 +77,10 @@
             <p>Tu compañero se ha desconectado.</p>
             <button id="btn-nuevo-chat">Nuevo Chat</button>
         </div>
-        
-        <!-- Estadísticas -->
-        <div class="stats-footer">
-            <span id="users-online">Usuarios en línea: --</span>
-            <span id="total-chats">Chats hoy: --</span>
-        </div>
     </div>
 
     <script src="/socket.io/socket.io.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/simple-peer/9.11.1/simplepeer.min.js"></script>
-    <script src="/js/ui.js"></script>
-    <script src="/js/media.js"></script>
     <script src="/js/main.js"></script>
 </body>
 </html>

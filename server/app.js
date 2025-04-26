@@ -2,74 +2,68 @@ const express = require('express');
 const http = require('http');
 const socketIo = require('socket.io');
 const path = require('path');
-const mongoose = require('mongoose');
-const dotenv = require('dotenv');
+const { initDb } = require('./db');
 const ChatManager = require('./chatManager');
-const statsRoutes = require('./routes/stats');
-const dbConfig = require('./config/db');
+require('dotenv').config();
 
-// Load environment variables
-dotenv.config();
-
-// Create Express application
+// Crear aplicación Express
 const app = express();
 const server = http.createServer(app);
-const io = socketIo(server);
+const io = socketIo(server, {
+    cors: {
+        origin: "*",
+        methods: ["GET", "POST"]
+    }
+});
 
-// Configure middleware
-app.use(express.json());
+// Inicializar la base de datos
+initDb();
+
+// Configurar directorio público
 app.use(express.static(path.join(__dirname, '../public')));
 
-// Connect to MongoDB
-mongoose.connect(dbConfig.uri)
-  .then(() => console.log('Connected to MongoDB'))
-  .catch(err => console.error('MongoDB connection error:', err));
-
-// API routes
-app.use('/api/stats', statsRoutes);
-
-// Initialize chat manager with io instance
+// Inicializar el administrador de chat con la instancia de io
 const chatManager = new ChatManager(io);
 
-// Socket.IO - Handle connections
+// Socket.IO - Manejar conexiones
 io.on('connection', (socket) => {
-    console.log(`User connected: ${socket.id}`);
+    console.log(`Usuario conectado: ${socket.id}`);
     
-    // User preferences for matching
-    socket.on('set-preferences', (preferences) => {
-        chatManager.setPreferences(socket.id, preferences);
-    });
-    
-    // User looks for a chat
-    socket.on('buscar-chat', (mediaOptions) => {
-        chatManager.buscarPareja(socket, mediaOptions);
+    // Usuario busca un chat
+    socket.on('buscar-chat', () => {
+        chatManager.buscarPareja(socket);
     });
 
-    // User sends a message
+    // Usuario envía un mensaje
     socket.on('enviar-mensaje', (mensaje) => {
         chatManager.enviarMensaje(socket.id, mensaje);
     });
-    
-    // Video/audio stream signal
-    socket.on('signal', (data) => {
-        chatManager.transmitSignal(socket.id, data);
+
+    // Usuario solicita iniciar videochat
+    socket.on('solicitar-video', () => {
+        chatManager.iniciarVideoChat(socket.id);
     });
 
-    // User leaves chat voluntarily
+    // Usuario envía señal WebRTC
+    socket.on('señal', (data) => {
+        chatManager.transmitirSeñal(socket.id, data);
+    });
+
+    // Usuario deja el chat voluntariamente
     socket.on('dejar-chat', () => {
         chatManager.desconectarUsuario(socket.id);
     });
 
-    // User disconnects
+    // Usuario se desconecta
     socket.on('disconnect', () => {
-        console.log(`User disconnected: ${socket.id}`);
+        console.log(`Usuario desconectado: ${socket.id}`);
         chatManager.desconectarUsuario(socket.id);
     });
 });
 
-// Start server
+// Iniciar servidor
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server started at http://localhost:${PORT}`);
-    console.log('Press Ctrl+C to stop');
+    console.log(`Servidor iniciado en http://localhost:${PORT}`);
+    console.log('Presiona Ctrl+C para detener');
 });
