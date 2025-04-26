@@ -137,10 +137,32 @@ function iniciarWebRTC(initiator = false) {
         return null;
     }
     
-    // Crear nuevo peer
+    // Crear nuevo peer con varios servidores STUN/TURN
     const peerOptions = {
         initiator: initiator,
-        trickle: false
+        trickle: true,  // Cambiado a true para mejor negociación de ICE
+        config: {
+            iceServers: [
+                { urls: 'stun:stun.l.google.com:19302' },
+                { urls: 'stun:stun1.l.google.com:19302' },
+                { urls: 'stun:stun2.l.google.com:19302' },
+                { urls: 'stun:stun3.l.google.com:19302' },
+                { urls: 'stun:stun4.l.google.com:19302' },
+                { urls: 'stun:stun.stunprotocol.org:3478' },
+                { urls: 'stun:stun.ekiga.net:3478' },
+                // Servidores TURN públicos (limitados pero útiles para pruebas)
+                {
+                    urls: 'turn:openrelay.metered.ca:80',
+                    username: 'openrelayproject',
+                    credential: 'openrelayproject'
+                },
+                {
+                    urls: 'turn:openrelay.metered.ca:443',
+                    username: 'openrelayproject',
+                    credential: 'openrelayproject'
+                }
+            ]
+        }
     };
     
     // Solo añadir el stream si existe
@@ -325,14 +347,18 @@ socket.on('señal', (data) => {
     console.log("Señal recibida:", data);
     
     // Si no tenemos un peer, pero recibimos una señal, creamos uno como iniciador
-    if (!peer && opcionAudio.checked || opcionVideo.checked) {
-        console.log("Recibida señal sin peer activo, creando como iniciador");
-        iniciarWebRTC(true);
+    if (!peer && (opcionAudio.checked || opcionVideo.checked)) {
+        console.log("Recibida señal sin peer activo, creando peer");
+        iniciarWebRTC(false);  // Creamos como receptor
     }
     
     if (peer) {
-        console.log("Transmitiendo señal al peer");
-        peer.signal(data);
+        try {
+            console.log("Transmitiendo señal al peer");
+            peer.signal(data);
+        } catch (error) {
+            console.error("Error al procesar señal:", error);
+        }
     } else {
         console.warn("No hay peer para recibir la señal");
     }

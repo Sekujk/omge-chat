@@ -152,7 +152,11 @@ class ChatManager {
             
             if (receptorSocket) {
                 receptorSocket.emit('señal', señal);
+            } else {
+                console.error(`No se encontró el socket del receptor: ${pareja.parejaId}`);
             }
+        } else {
+            console.error(`El usuario ${emisorId} no tiene pareja asignada para enviar señal`);
         }
     }
 
