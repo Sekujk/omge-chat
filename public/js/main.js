@@ -26,6 +26,7 @@ const opcionVideo = document.getElementById('opcion-video');
 let enChat = false;
 let localStream = null;
 let peer = null;
+let isInitiator = false;  // Nueva variable para rastrear quién inicia la conexión
 let mediaConstraints = {
     audio: false,
     video: false
@@ -56,6 +57,11 @@ function agregarMensaje(texto, esMio) {
 // Iniciar cámara y micrófono
 async function iniciarMedia() {
     try {
+        // Detener stream anterior si existe
+        if (localStream) {
+            localStream.getTracks().forEach(track => track.stop());
+        }
+
         // Actualizar restricciones de media según opciones seleccionadas
         mediaConstraints = {
             audio: opcionAudio.checked,
@@ -64,11 +70,15 @@ async function iniciarMedia() {
         
         // Si no se requiere audio ni video, no iniciar stream
         if (!mediaConstraints.audio && !mediaConstraints.video) {
+            console.log("No se requiere audio ni video");
             return null;
         }
         
+        console.log("Solicitando acceso a dispositivos con:", mediaConstraints);
+        
         // Obtener acceso a la cámara y/o micrófono
         const stream = await navigator.mediaDevices.getUserMedia(mediaConstraints);
+        console.log("Stream obtenido:", stream);
         
         // Mostrar video local si está habilitado
         if (mediaConstraints.video) {
@@ -113,23 +123,43 @@ function actualizarBotonesMedia() {
 // Iniciar conexión WebRTC
 function iniciarWebRTC(initiator = false) {
     if (peer) {
+        console.log("Destruyendo peer anterior");
         peer.destroy();
+        peer = null;
+    }
+    
+    isInitiator = initiator;
+    console.log(`Creando nuevo peer como ${initiator ? 'iniciador' : 'receptor'}`);
+    
+    // Verificar que tenemos un stream si se ha seleccionado audio o video
+    if ((opcionAudio.checked || opcionVideo.checked) && !localStream) {
+        console.warn("Se requiere media pero localStream no está disponible");
+        return null;
     }
     
     // Crear nuevo peer
-    peer = new SimplePeer({
+    const peerOptions = {
         initiator: initiator,
-        stream: localStream,
         trickle: false
-    });
+    };
+    
+    // Solo añadir el stream si existe
+    if (localStream) {
+        peerOptions.stream = localStream;
+    }
+    
+    peer = new SimplePeer(peerOptions);
+    console.log("Peer creado:", peer);
     
     // Evento: Se genera una señal para enviar al otro peer
     peer.on('signal', data => {
+        console.log("Señal generada:", data);
         socket.emit('señal', data);
     });
     
     // Evento: Se recibe una stream de la otra persona
     peer.on('stream', stream => {
+        console.log("Stream remoto recibido:", stream);
         remoteVideo.srcObject = stream;
     });
     
@@ -143,6 +173,11 @@ function iniciarWebRTC(initiator = false) {
         console.log('Conexión WebRTC cerrada');
     });
     
+    // Evento: Conexión establecida
+    peer.on('connect', () => {
+        console.log('¡Conexión WebRTC establecida!');
+    });
+    
     return peer;
 }
 
@@ -151,8 +186,9 @@ async function buscarChat() {
     mostrarPantalla(buscandoScreen);
     chatMessages.innerHTML = ''; // Limpiar mensajes anteriores
     
-    // Iniciar media si no está iniciada
-    if (!localStream && (opcionAudio.checked || opcionVideo.checked)) {
+    // Iniciar media antes de buscar
+    if (opcionAudio.checked || opcionVideo.checked) {
+        console.log("Iniciando media antes de buscar chat");
         localStream = await iniciarMedia();
     }
     
@@ -237,18 +273,27 @@ btnToggleAudio.addEventListener('click', () => {
 
 // Cuando se establece conexión con el servidor
 socket.on('connect', () => {
+    console.log("Conectado al servidor de Socket.IO");
     mostrarPantalla(inicioScreen);
 });
 
 // Cuando se encuentra un compañero de chat
-// Cuando se encuentra un compañero de chat
-socket.on('chat-iniciado', () => {
+socket.on('chat-iniciado', async () => {
+    console.log("Chat iniciado");
     enChat = true;
     mostrarPantalla(chatScreen);
     
+    // Si se requiere audio o video, iniciar el proceso de solicitud
     if (opcionAudio.checked || opcionVideo.checked) {
-        // Iniciar WebRTC (como iniciador)
-        iniciarWebRTC(true);
+        console.log("Opciones de media activadas, iniciando solicitud");
+        
+        // Asegurarse de que tenemos media antes de iniciar la solicitud
+        if (!localStream) {
+            console.log("Obteniendo localStream");
+            localStream = await iniciarMedia();
+        }
+        
+        // Notificar al servidor que queremos iniciar video/audio
         socket.emit('solicitar-video');
     }
     
@@ -262,23 +307,40 @@ socket.on('mensaje', (mensaje) => {
 
 // Cuando el compañero solicita videochat
 socket.on('solicitud-video', async () => {
-    if (!localStream && (opcionAudio.checked || opcionVideo.checked)) {
+    console.log("Recibida solicitud de video/audio");
+    
+    // Asegurarse de que tenemos media antes de aceptar la solicitud
+    if ((opcionAudio.checked || opcionVideo.checked) && !localStream) {
+        console.log("Iniciando media en respuesta a solicitud");
         localStream = await iniciarMedia();
     }
     
-    // Iniciar WebRTC (como receptor)
+    // Iniciar WebRTC como receptor (no iniciador)
+    console.log("Iniciando WebRTC como receptor");
     iniciarWebRTC(false);
 });
 
 // Cuando se recibe una señal de WebRTC
 socket.on('señal', (data) => {
+    console.log("Señal recibida:", data);
+    
+    // Si no tenemos un peer, pero recibimos una señal, creamos uno como iniciador
+    if (!peer && opcionAudio.checked || opcionVideo.checked) {
+        console.log("Recibida señal sin peer activo, creando como iniciador");
+        iniciarWebRTC(true);
+    }
+    
     if (peer) {
+        console.log("Transmitiendo señal al peer");
         peer.signal(data);
+    } else {
+        console.warn("No hay peer para recibir la señal");
     }
 });
 
 // Cuando el compañero se desconecta
 socket.on('compañero-desconectado', () => {
+    console.log("Compañero desconectado");
     enChat = false;
     mostrarPantalla(desconectadoScreen);
     
@@ -293,6 +355,7 @@ socket.on('compañero-desconectado', () => {
 
 // Cuando hay un error de conexión
 socket.on('connect_error', () => {
+    console.error("Error de conexión con el servidor");
     alert('Error de conexión con el servidor');
     mostrarPantalla(inicioScreen);
     detenerMedia();
