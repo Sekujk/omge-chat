@@ -1,77 +1,111 @@
-// Conectar con el servidor mediante Socket.io
+// Connect to server using Socket.io
 const socket = io();
 
-// Elementos DOM
-const inicioScreen = document.getElementById('inicio-screen');
-const buscandoScreen = document.getElementById('buscando-screen');
-const chatScreen = document.getElementById('chat-screen');
-const desconectadoScreen = document.getElementById('desconectado-screen');
-const chatMessages = document.getElementById('chat-messages');
-const mensajeInput = document.getElementById('mensaje-input');
-const btnIniciarChat = document.getElementById('btn-iniciar-chat');
-const btnEnviar = document.getElementById('btn-enviar');
-const btnSiguiente = document.getElementById('btn-siguiente');
-const btnNuevoChat = document.getElementById('btn-nuevo-chat');
+// DOM Elements from ui.js are already defined
+// Media control functions from media.js
 
-// Variables de estado
+// State variables
 let enChat = false;
+let currentMatchId = null;
 
-// Mostrar solo la pantalla especificada
-function mostrarPantalla(pantalla) {
-    inicioScreen.classList.add('hidden');
-    buscandoScreen.classList.add('hidden');
-    chatScreen.classList.add('hidden');
-    desconectadoScreen.classList.add('hidden');
+// Initialize app
+function init() {
+    // Set up UI event listeners
+    setupUIListeners();
     
-    pantalla.classList.remove('hidden');
-}
-
-// Agregar mensaje al chat
-function agregarMensaje(texto, esMio) {
-    const mensajeDiv = document.createElement('div');
-    mensajeDiv.classList.add('message');
-    mensajeDiv.classList.add(esMio ? 'message-self' : 'message-other');
-    mensajeDiv.textContent = texto;
-    chatMessages.appendChild(mensajeDiv);
+    // Get initial stats
+    fetchStats();
     
-    // Desplazarse automáticamente hacia abajo
-    chatMessages.scrollTop = chatMessages.scrollHeight;
+    // Poll stats every minute
+    setInterval(fetchStats, 60000);
 }
 
-// Iniciar búsqueda de chat
-function buscarChat() {
-    mostrarPantalla(buscandoScreen);
-    chatMessages.innerHTML = ''; // Limpiar mensajes anteriores
-    socket.emit('buscar-chat');
-}
+// Set up event listeners for UI elements
+function setupUIListeners() {
+    // Start chat button
+    btnIniciarChat.addEventListener('click', () => {
+        // Get media preferences
+        const enableVideo = document.getElementById('enable-video').checked;
+        const enableAudio = document.getElementById('enable-audio').checked;
+        
+        // Get interests
+        const interestsText = document.getElementById('interests-input').value;
+        const interests = interestsText
+            .split(',')
+            .map(tag => tag.trim())
+            .filter(tag => tag.length > 0);
+            
+        // Set user preferences
+        socket.emit('set-preferences', { interests });
+        
+        // Initialize media if needed
+        if (enableVideo || enableAudio) {
+            initMedia({ video: enableVideo, audio: enableAudio })
+                .then(() => {
+                    // Start looking for a chat partner
+                    buscarChat({ video: enableVideo, audio: enableAudio });
+                })
+                .catch(error => {
+                    alert(`Error accessing media: ${error.message}`);
+                    // Fall back to text-only chat
+                    buscarChat({ video: false, audio: false });
+                });
+        } else {
+            // Start looking for a text-only chat
+            buscarChat({ video: false, audio: false });
+        }
+    });
 
-// Evento: Botón Iniciar Chat
-btnIniciarChat.addEventListener('click', buscarChat);
-
-// Evento: Botón Enviar Mensaje
-btnEnviar.addEventListener('click', () => {
-    enviarMensaje();
-});
-
-// Evento: Presionar Enter para enviar mensaje
-mensajeInput.addEventListener('keypress', (e) => {
-    if (e.key === 'Enter') {
-        enviarMensaje();
-    }
-});
-
-// Evento: Botón Siguiente (buscar nuevo chat)
-btnSiguiente.addEventListener('click', () => {
-    if (enChat) {
+    // Cancel search button
+    btnCancelarBusqueda.addEventListener('click', () => {
         socket.emit('dejar-chat');
-    }
-    buscarChat();
-});
+        mostrarPantalla(inicioScreen);
+        stopLocalStream();
+    });
 
-// Evento: Botón Nuevo Chat después de desconexión
-btnNuevoChat.addEventListener('click', buscarChat);
+    // Send message button
+    btnEnviar.addEventListener('click', enviarMensaje);
 
-// Función para enviar mensaje
+    // Press Enter to send message
+    mensajeInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+            enviarMensaje();
+        }
+    });
+
+    // Next chat button
+    btnSiguiente.addEventListener('click', () => {
+        if (enChat) {
+            socket.emit('dejar-chat');
+        }
+        
+        // Get current media preferences
+        const enableVideo = document.getElementById('enable-video').checked;
+        const enableAudio = document.getElementById('enable-audio').checked;
+        
+        // Look for a new chat
+        buscarChat({ video: enableVideo, audio: enableAudio });
+    });
+
+    // New chat button after disconnection
+    btnNuevoChat.addEventListener('click', () => {
+        // Go back to start screen to allow user to adjust preferences
+        mostrarPantalla(inicioScreen);
+    });
+    
+    // Media control buttons
+    document.getElementById('toggle-video').addEventListener('click', toggleVideo);
+    document.getElementById('toggle-audio').addEventListener('click', toggleAudio);
+}
+
+// Start looking for a chat
+function buscarChat(mediaOptions) {
+    mostrarPantalla(buscandoScreen);
+    chatMessages.innerHTML = ''; // Clear previous messages
+    socket.emit('buscar-chat', mediaOptions);
+}
+
+// Send a message
 function enviarMensaje() {
     const mensaje = mensajeInput.value.trim();
     if (mensaje && enChat) {
@@ -81,33 +115,71 @@ function enviarMensaje() {
     }
 }
 
-// ===== Socket.io Eventos =====
+// Fetch stats from server
+function fetchStats() {
+    fetch('/api/stats')
+        .then(response => response.json())
+        .then(data => {
+            document.getElementById('users-online').textContent = 
+                `Usuarios en línea: ${data.activeUsers}`;
+            document.getElementById('total-chats').textContent = 
+                `Chats hoy: ${data.totalChats}`;
+        })
+        .catch(err => console.error('Error fetching stats:', err));
+}
 
-// Cuando se establece conexión con el servidor
+// ===== Socket.io Event Handlers =====
+
+// When connected to server
 socket.on('connect', () => {
     mostrarPantalla(inicioScreen);
 });
 
-// Cuando se encuentra un compañero de chat
-socket.on('chat-iniciado', () => {
-    enChat = true;
-    mostrarPantalla(chatScreen);
-    agregarMensaje('Te has conectado con alguien. ¡Di hola!', false);
+// When waiting for a match
+socket.on('esperando', () => {
+    mostrarPantalla(buscandoScreen);
 });
 
-// Cuando se recibe un mensaje
+// When found a chat partner
+socket.on('chat-iniciado', (pairMediaOptions) => {
+    enChat = true;
+    mostrarPantalla(chatScreen);
+    
+    // Display welcome message
+    agregarMensaje('Te has conectado con alguien. ¡Di hola!', false);
+    
+    // Initialize peer connection for video/audio if either user has it enabled
+    if ((pairMediaOptions.video || pairMediaOptions.audio) && localStream) {
+        initPeerConnection(true); // We are the initiator
+    }
+});
+
+// When receiving a message
 socket.on('mensaje', (mensaje) => {
     agregarMensaje(mensaje, false);
 });
 
-// Cuando el compañero se desconecta
+// When receiving WebRTC signaling data
+socket.on('signal', (data) => {
+    handleSignal(data);
+});
+
+// When chat partner disconnects
 socket.on('compañero-desconectado', () => {
     enChat = false;
     mostrarPantalla(desconectadoScreen);
+    
+    // Close peer connection if it exists
+    if (peerConnection) {
+        closePeerConnection();
+    }
 });
 
-// Cuando hay un error de conexión
+// When connection error occurs
 socket.on('connect_error', () => {
     alert('Error de conexión con el servidor');
     mostrarPantalla(inicioScreen);
 });
+
+// Initialize app when document is loaded
+document.addEventListener('DOMContentLoaded', init);

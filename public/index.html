@@ -12,6 +12,22 @@
         
         <!-- Pantalla inicial -->
         <div id="inicio-screen">
+            <div class="preferences-container">
+                <h3>Preferencias</h3>
+                <div class="media-options">
+                    <label>
+                        <input type="checkbox" id="enable-video"> Video
+                    </label>
+                    <label>
+                        <input type="checkbox" id="enable-audio"> Audio
+                    </label>
+                </div>
+                
+                <div class="interests-container">
+                    <h4>Intereses (opcional)</h4>
+                    <input type="text" id="interests-input" placeholder="deportes, música, películas...">
+                </div>
+            </div>
             <button id="btn-iniciar-chat">Iniciar Chat</button>
         </div>
         
@@ -19,10 +35,22 @@
         <div id="buscando-screen" class="hidden">
             <p>Buscando a alguien para chatear...</p>
             <div class="spinner"></div>
+            <button id="btn-cancelar-busqueda">Cancelar</button>
         </div>
         
         <!-- Pantalla de chat -->
         <div id="chat-screen" class="hidden">
+            <div class="media-container">
+                <div class="video-container">
+                    <video id="local-video" autoplay muted></video>
+                    <video id="remote-video" autoplay></video>
+                </div>
+                <div class="media-controls">
+                    <button id="toggle-video" class="media-btn">Pausar Video</button>
+                    <button id="toggle-audio" class="media-btn">Silenciar</button>
+                </div>
+            </div>
+            
             <div id="chat-messages"></div>
             <div class="chat-controls">
                 <input type="text" id="mensaje-input" placeholder="Escribe un mensaje...">
@@ -36,9 +64,18 @@
             <p>Tu compañero se ha desconectado.</p>
             <button id="btn-nuevo-chat">Nuevo Chat</button>
         </div>
+        
+        <!-- Estadísticas -->
+        <div class="stats-footer">
+            <span id="users-online">Usuarios en línea: --</span>
+            <span id="total-chats">Chats hoy: --</span>
+        </div>
     </div>
 
     <script src="/socket.io/socket.io.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/simple-peer/9.11.1/simplepeer.min.js"></script>
+    <script src="/js/ui.js"></script>
+    <script src="/js/media.js"></script>
     <script src="/js/main.js"></script>
 </body>
 </html>

@@ -17,6 +17,7 @@ body {
     background-color: white;
     border-radius: 8px;
     box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+    position: relative;
 }
 
 h1 {
@@ -34,10 +35,16 @@ button {
     border-radius: 4px;
     cursor: pointer;
     font-size: 16px;
+    transition: background-color 0.3s;
 }
 
 button:hover {
     background-color: #45a049;
+}
+
+button:disabled {
+    background-color: #cccccc;
+    cursor: not-allowed;
 }
 
 #btn-siguiente {
@@ -46,6 +53,14 @@ button:hover {
 
 #btn-siguiente:hover {
     background-color: #0b7dda;
+}
+
+#btn-cancelar-busqueda {
+    background-color: #f44336;
+}
+
+#btn-cancelar-busqueda:hover {
+    background-color: #d32f2f;
 }
 
 .hidden {
@@ -57,8 +72,44 @@ button:hover {
     padding: 40px 0;
 }
 
+.preferences-container {
+    margin-bottom: 20px;
+    padding: 15px;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+}
+
+.media-options {
+    margin: 15px 0;
+    display: flex;
+    justify-content: center;
+    gap: 20px;
+}
+
+.media-options label {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    cursor: pointer;
+}
+
+.interests-container {
+    margin-top: 10px;
+}
+
+.interests-container h4 {
+    margin-bottom: 5px;
+}
+
+#interests-input {
+    width: 100%;
+    padding: 8px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+}
+
 #chat-messages {
-    height: 400px;
+    height: 300px;
     border: 1px solid #ddd;
     padding: 10px;
     margin-bottom: 10px;
@@ -111,4 +162,65 @@ button:hover {
 @keyframes spin {
     0% { transform: rotate(0deg); }
     100% { transform: rotate(360deg); }
+}
+
+/* Media elements styling */
+.media-container {
+    display: flex;
+    flex-direction: column;
+    margin-bottom: 15px;
+}
+
+.video-container {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    height: 200px;
+    margin-bottom: 10px;
+}
+
+#local-video, #remote-video {
+    width: 49%;
+    background-color: #222;
+    border-radius: 4px;
+    object-fit: cover;
+}
+
+.media-controls {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+.media-btn {
+    padding: 8px 12px;
+    font-size: 14px;
+}
+
+#toggle-video {
+    background-color: #ff9800;
+}
+
+#toggle-video:hover {
+    background-color: #e68a00;
+}
+
+#toggle-audio {
+    background-color: #673ab7;
+}
+
+#toggle-audio:hover {
+    background-color: #5e35b1;
+}
+
+.stats-footer {
+    margin-top: 20px;
+    text-align: center;
+    font-size: 14px;
+    color: #666;
+    padding-top: 10px;
+    border-top: 1px solid #eee;
+    display: flex;
+    justify-content: space-around;
 }
