@@ -136,8 +136,13 @@ class ChatManager {
             const receptorSocket = this.io.sockets.sockets.get(pareja.parejaId);
             
             if (receptorSocket) {
+                console.log(`Usuario ${emisorId} solicita video con ${pareja.parejaId}`);
                 receptorSocket.emit('solicitud-video');
+            } else {
+                console.error(`No se encontró el socket del receptor: ${pareja.parejaId}`);
             }
+        } else {
+            console.error(`El usuario ${emisorId} no tiene pareja asignada para iniciar video`);
         }
     }
 
@@ -151,6 +156,7 @@ class ChatManager {
             const receptorSocket = this.io.sockets.sockets.get(pareja.parejaId);
             
             if (receptorSocket) {
+                console.log(`Transmitiendo señal de ${emisorId} a ${pareja.parejaId} (tipo: ${señal.type || 'ICE'})`);
                 receptorSocket.emit('señal', señal);
             } else {
                 console.error(`No se encontró el socket del receptor: ${pareja.parejaId}`);
@@ -189,6 +195,14 @@ class ChatManager {
             
             console.log(`Chat finalizado entre ${socketId} y ${pareja.parejaId} - Chat ID: ${pareja.chatId}`);
         }
+    }
+
+    // Método auxiliar para depuración
+    imprimirEstado() {
+        console.log('=== Estado del ChatManager ===');
+        console.log(`Usuarios esperando: ${this.usuariosEsperando.length}`);
+        console.log(`Parejas activas: ${Object.keys(this.parejas).length / 2}`);
+        console.log('=============================');
     }
 }
 
