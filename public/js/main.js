@@ -34,6 +34,7 @@ let mediaConstraints = {
 let pendingCandidates = []; // Para almacenar candidatos ICE pendientes
 let peerCreationInProgress = false; // Bandera para evitar creaciones duplicadas
 let peerInitialized = false; // Nueva bandera para rastrear si el peer ya está configurado
+let remoteStreamReceived = false; // Para rastrear si ya recibimos un stream remoto
 
 // Mostrar solo la pantalla especificada
 function mostrarPantalla(pantalla) {
@@ -86,10 +87,11 @@ async function iniciarMedia() {
         // Mostrar video local si está habilitado
         if (mediaConstraints.video) {
             localVideo.srcObject = stream;
+            await localVideo.play().catch(err => console.log("Error reproduciendo video local:", err));
         }
         
         // Actualizar estado de los botones de media
-        actualizarBotonesMedia();
+        actualizarBotonesMedia(stream);
         
         return stream;
     } catch (error) {
@@ -100,10 +102,12 @@ async function iniciarMedia() {
 }
 
 // Actualizar estado visual de los botones de media
-function actualizarBotonesMedia() {
-    if (localStream) {
-        const videoTracks = localStream.getVideoTracks();
-        const audioTracks = localStream.getAudioTracks();
+function actualizarBotonesMedia(stream) {
+    const streamToCheck = stream || localStream;
+    
+    if (streamToCheck) {
+        const videoTracks = streamToCheck.getVideoTracks();
+        const audioTracks = streamToCheck.getAudioTracks();
         
         if (videoTracks.length > 0) {
             const videoEnabled = videoTracks[0].enabled;
@@ -111,6 +115,9 @@ function actualizarBotonesMedia() {
                 '<i class="fas fa-video"></i>' : 
                 '<i class="fas fa-video-slash"></i>';
             btnToggleVideo.classList.toggle('disabled', !videoEnabled);
+        } else {
+            btnToggleVideo.innerHTML = '<i class="fas fa-video-slash"></i>';
+            btnToggleVideo.classList.add('disabled');
         }
         
         if (audioTracks.length > 0) {
@@ -119,11 +126,14 @@ function actualizarBotonesMedia() {
                 '<i class="fas fa-microphone"></i>' : 
                 '<i class="fas fa-microphone-slash"></i>';
             btnToggleAudio.classList.toggle('disabled', !audioEnabled);
+        } else {
+            btnToggleAudio.innerHTML = '<i class="fas fa-microphone-slash"></i>';
+            btnToggleAudio.classList.add('disabled');
         }
     }
 }
 
-// Iniciar conexión WebRTC
+// Iniciar conexión WebRTC con manejo de errores mejorado
 function iniciarWebRTC(initiator = false) {
     if (peerCreationInProgress) {
         console.log("Creación de peer ya en proceso, espere...");
@@ -131,6 +141,7 @@ function iniciarWebRTC(initiator = false) {
     }
     
     peerCreationInProgress = true;
+    console.log(`Iniciando WebRTC como ${initiator ? 'iniciador' : 'receptor'}`);
     
     // Destruir peer anterior si existe
     if (peer) {
@@ -138,13 +149,14 @@ function iniciarWebRTC(initiator = false) {
         peer.destroy();
         peer = null;
         peerInitialized = false;
+        remoteStreamReceived = false;
     }
     
     isInitiator = initiator;
-    console.log(`Creando nuevo peer como ${initiator ? 'iniciador' : 'receptor'}`);
     
     // Verificar que tenemos un stream si se ha seleccionado audio o video
-    if ((opcionAudio.checked || opcionVideo.checked) && !localStream) {
+    const needsMedia = opcionAudio.checked || opcionVideo.checked;
+    if (needsMedia && !localStream) {
         console.warn("Se requiere media pero localStream no está disponible");
         peerCreationInProgress = false;
         return null;
@@ -175,7 +187,11 @@ function iniciarWebRTC(initiator = false) {
                     credential: 'openrelayproject'
                 }
             ],
-            sdpSemantics: 'unified-plan'
+            iceCandidatePoolSize: 10
+        },
+        sdpTransform: (sdp) => {
+            // Esto puede ayudar con algunos problemas de compatibilidad en navegadores
+            return sdp;
         }
     };
     
@@ -184,63 +200,97 @@ function iniciarWebRTC(initiator = false) {
         peerOptions.stream = localStream;
     }
     
-    peer = new SimplePeer(peerOptions);
-    console.log("Peer creado:", peer);
-    
-    // Evento: Se genera una señal para enviar al otro peer
-    peer.on('signal', data => {
-        console.log("Señal generada para enviar:", data.type || "ICE candidate");
-        socket.emit('señal', data);
-    });
-    
-    // Evento: Se recibe una stream de la otra persona
-    peer.on('stream', stream => {
-        console.log("Stream remoto recibido:", stream);
-        remoteVideo.srcObject = stream;
+    try {
+        // Crear el peer con las opciones configuradas
+        peer = new SimplePeer(peerOptions);
+        console.log("Peer creado:", peer);
         
-        // Intentar reproducir el video inmediatamente
-        remoteVideo.play().catch(err => {
-            console.warn("Error al reproducir video automáticamente:", err);
-            // Podríamos mostrar un botón para reproducir manualmente
+        // Evento: Se genera una señal para enviar al otro peer
+        peer.on('signal', data => {
+            console.log("Señal generada para enviar:", data.type || "ICE candidate");
+            socket.emit('señal', data);
         });
-    });
-    
-    // Evento: Error en la conexión
-    peer.on('error', err => {
-        console.error('Error en la conexión WebRTC:', err);
-        peerCreationInProgress = false;
-    });
-    
-    // Evento: Conexión cerrada
-    peer.on('close', () => {
-        console.log('Conexión WebRTC cerrada');
-        peerCreationInProgress = false;
-        peerInitialized = false;
-    });
-    
-    // Evento: Conexión establecida
-    peer.on('connect', () => {
-        console.log('¡Conexión WebRTC establecida!');
-        peerCreationInProgress = false;
-        peerInitialized = true;
-    });
-    
-    // Procesar señales pendientes
-    if (pendingCandidates.length > 0 && peer) {
-        console.log(`Procesando ${pendingCandidates.length} candidatos ICE pendientes`);
-        const candidates = [...pendingCandidates]; // Crear copia para evitar modificaciones durante iteración
-        pendingCandidates = []; // Limpiar la lista original
         
-        for (const candidate of candidates) {
-            try {
-                peer.signal(candidate);
-            } catch (err) {
-                console.error("Error procesando candidato pendiente:", err);
+        // Evento: Se recibe una stream de la otra persona
+        peer.on('stream', stream => {
+            console.log("Stream remoto recibido:", stream);
+            if (stream && stream.getTracks().length > 0) {
+                remoteVideo.srcObject = stream;
+                remoteStreamReceived = true;
+                
+                // Intentar reproducir el video inmediatamente
+                remoteVideo.play().catch(err => {
+                    console.warn("Error al reproducir video automáticamente:", err);
+                    // Podríamos mostrar un botón para reproducir manualmente
+                });
+            } else {
+                console.warn("Stream remoto recibido sin tracks");
             }
+        });
+        
+        // Evento: Error en la conexión
+        peer.on('error', err => {
+            console.error('Error en la conexión WebRTC:', err);
+            peerCreationInProgress = false;
+        });
+        
+        // Evento: Conexión cerrada
+        peer.on('close', () => {
+            console.log('Conexión WebRTC cerrada');
+            peerCreationInProgress = false;
+            peerInitialized = false;
+            remoteStreamReceived = false;
+        });
+        
+        // Evento: Conexión establecida
+        peer.on('connect', () => {
+            console.log('¡Conexión WebRTC establecida!');
+            peerCreationInProgress = false;
+            peerInitialized = true;
+            
+            // Si después de un tiempo razonable no recibimos stream, podemos intentar reiniciar
+            if (needsMedia && !remoteStreamReceived) {
+                setTimeout(() => {
+                    if (!remoteStreamReceived && peer && peerInitialized) {
+                        console.log("No se recibió stream después de la conexión, intentando renegociar");
+                        // Aquí podríamos implementar una estrategia de reconexión
+                    }
+                }, 5000);
+            }
+        });
+        
+        // Procesar señales pendientes en el orden correcto
+        if (pendingCandidates.length > 0) {
+            console.log(`Procesando ${pendingCandidates.length} señales pendientes`);
+            
+            // Primero procesar offer/answer, luego los ICE candidates
+            const offer = pendingCandidates.find(c => c.type === 'offer');
+            const answer = pendingCandidates.find(c => c.type === 'answer');
+            const candidates = pendingCandidates.filter(c => !c.type);
+            
+            try {
+                // Procesar offer/answer primero
+                if (offer && !initiator) peer.signal(offer);
+                if (answer && initiator) peer.signal(answer);
+                
+                // Luego procesar ICE candidates
+                for (const candidate of candidates) {
+                    peer.signal(candidate);
+                }
+            } catch (err) {
+                console.error("Error procesando señales pendientes:", err);
+            }
+            
+            // Limpiar señales pendientes
+            pendingCandidates = [];
         }
+        
+        return peer;
+    } catch (error) {
+        console.error("Error al crear el peer:", error);
+        peerCreationInProgress = false;
+        return null;
     }
-    
-    return peer;
 }
 
 // Iniciar búsqueda de chat
@@ -250,6 +300,7 @@ async function buscarChat() {
     pendingCandidates = []; // Reiniciar candidatos pendientes
     peerCreationInProgress = false; // Reiniciar bandera
     peerInitialized = false; // Reiniciar estado del peer
+    remoteStreamReceived = false; // Reiniciar estado de stream remoto
     
     // Reiniciar estado de media
     if (localStream) {
@@ -275,6 +326,11 @@ async function buscarChat() {
     if (opcionAudio.checked || opcionVideo.checked) {
         console.log("Iniciando media antes de buscar chat");
         localStream = await iniciarMedia();
+        if (!localStream && (opcionAudio.checked || opcionVideo.checked)) {
+            alert('No se pudo acceder a la cámara/micrófono. Verifica los permisos o prueba solo con chat de texto.');
+            mostrarPantalla(inicioScreen);
+            return;
+        }
     }
     
     // Buscar chat una vez que tenemos el stream si era necesario
@@ -308,6 +364,27 @@ function detenerMedia() {
     
     peerCreationInProgress = false;
     peerInitialized = false;
+    remoteStreamReceived = false;
+}
+
+// Función para manejar señales entrantes con mejor manejo de errores
+function procesarSeñalEntrante(data) {
+    console.log("Procesando señal entrante:", data.type || "ICE candidate");
+    
+    // Si no tenemos peer o estamos en medio de creación, guardar para después
+    if (!peer || peerCreationInProgress) {
+        console.log("Añadiendo señal a la cola de pendientes");
+        pendingCandidates.push(data);
+        return;
+    }
+    
+    // Intentar procesar la señal en el peer existente
+    try {
+        peer.signal(data);
+    } catch (err) {
+        console.error("Error al procesar señal, guardando como pendiente:", err);
+        pendingCandidates.push(data);
+    }
 }
 
 // ===== Event Listeners =====
@@ -373,7 +450,7 @@ socket.on('chat-iniciado', async () => {
     mostrarPantalla(chatScreen);
     
     // Si se requiere audio o video, iniciar el proceso de solicitud
-    if ((opcionAudio.checked || opcionVideo.checked) && !peerInitialized) {
+    if ((opcionAudio.checked || opcionVideo.checked)) {
         console.log("Opciones de media activadas, iniciando solicitud");
         
         // Asegurarse de que tenemos media antes de iniciar la solicitud
@@ -382,14 +459,14 @@ socket.on('chat-iniciado', async () => {
             localStream = await iniciarMedia();
         }
         
-        // Si somos el iniciador, creamos el peer y enviamos oferta
+        // Si tenemos stream local, crear peer y solicitar video
         if (localStream) {
             console.log("Creando peer como iniciador");
             iniciarWebRTC(true);
+            
+            // Notificar al otro usuario que queremos iniciar media
+            socket.emit('solicitar-video');
         }
-        
-        // Notificar al otro usuario que queremos iniciar media
-        socket.emit('solicitar-video');
     }
     
     agregarMensaje('Te has conectado con alguien. ¡Di hola!', false);
@@ -404,23 +481,31 @@ socket.on('mensaje', (mensaje) => {
 socket.on('solicitud-video', async () => {
     console.log("Recibida solicitud de video/audio");
     
-    // Solo procesar si no tenemos un peer inicializado
-    if (!peerInitialized) {
-        // Asegurarse de que tenemos media antes de aceptar la solicitud
-        if ((opcionAudio.checked || opcionVideo.checked) && !localStream) {
+    // Verificar si queremos media y tenemos stream
+    const needsMedia = opcionAudio.checked || opcionVideo.checked;
+    
+    if (needsMedia) {
+        // Asegurarse de que tenemos media
+        if (!localStream) {
             console.log("Iniciando media en respuesta a solicitud");
             localStream = await iniciarMedia();
         }
         
-        // Crear peer como receptor (responder a la solicitud)
+        // Si tenemos stream, crear peer como receptor
         if (localStream) {
-            console.log("Iniciando WebRTC como receptor (respondiendo a solicitud)");
-            iniciarWebRTC(false);  // Crear como receptor
+            // Si ya hay un peer iniciador, no crear otro
+            if (!peer || (peer && !isInitiator)) {
+                console.log("Iniciando WebRTC como receptor");
+                iniciarWebRTC(false);
+            } else {
+                console.log("Ya hay un peer iniciador, no se crea uno nuevo");
+            }
         } else {
-            console.warn("No hay localStream disponible para responder a la solicitud de video");
+            console.warn("No se pudo obtener stream para responder a la solicitud");
+            // Podríamos notificar al usuario que hubo un problema
         }
     } else {
-        console.log("Peer ya inicializado, ignorando solicitud de video");
+        console.log("Media no seleccionada, ignorando solicitud de video");
     }
 });
 
@@ -428,55 +513,40 @@ socket.on('solicitud-video', async () => {
 socket.on('señal', async (data) => {
     console.log("Señal recibida:", data.type || "ICE candidate");
     
-    // Si recibimos una oferta y no tenemos peer o la oferta llega cuando somos iniciadores
+    // Si recibimos una oferta, necesitamos estar listos para responder
     if (data.type === 'offer') {
-        // Si no tenemos stream pero necesitamos uno
-        if ((opcionAudio.checked || opcionVideo.checked) && !localStream) {
-            console.log("Recibida oferta sin stream, iniciando media");
+        // Si no tenemos stream pero lo necesitamos
+        const needsMedia = opcionAudio.checked || opcionVideo.checked;
+        if (needsMedia && !localStream) {
+            console.log("Recibida oferta sin stream local, iniciando media");
             localStream = await iniciarMedia();
         }
         
-        // Si no tenemos peer o recibimos una oferta cuando somos iniciadores
-        if (!peer || (peer && isInitiator)) {
-            console.log("Creando nuevo peer para responder a oferta");
+        // Si ya tenemos un peer pero somos iniciadores o no está inicializado,
+        // necesitamos crear uno nuevo como receptor
+        if (!peer || (peer && isInitiator) || !peerInitialized) {
+            // Guardar la oferta para procesarla después de crear el peer
             pendingCandidates.push(data);
-            iniciarWebRTC(false);  // Crear como receptor
+            iniciarWebRTC(false);
             return;
         }
     }
     
-    // Si no tenemos peer aún
-    if (!peer) {
-        console.log("No hay peer disponible, almacenando señal");
-        pendingCandidates.push(data);
-        
-        // Si recibimos una respuesta, necesitamos crear un peer como iniciador
-        if (data.type === 'answer') {
-            if ((opcionAudio.checked || opcionVideo.checked)) {
-                if (!localStream) {
-                    localStream = await iniciarMedia();
-                }
-                
-                if (localStream) {
-                    console.log("Creando peer como iniciador para procesar respuesta");
-                    iniciarWebRTC(true);
-                }
+    // Si recibimos answer pero no tenemos peer o somos receptores, algo está mal
+    if (data.type === 'answer') {
+        if (!peer || (peer && !isInitiator)) {
+            console.warn("Recibida respuesta pero no somos iniciadores");
+            // Podríamos iniciar un nuevo peer como iniciador si es necesario
+            if (localStream && !peer) {
+                pendingCandidates.push(data);
+                iniciarWebRTC(true);
+                return;
             }
         }
-    } else {
-        // Tenemos peer, intentar procesar la señal
-        try {
-            console.log("Procesando señal en peer existente");
-            peer.signal(data);
-        } catch (error) {
-            console.error("Error al procesar señal:", error);
-            // Agregar a pendientes y recrear el peer si hay error
-            pendingCandidates.push(data);
-            
-            // Recrear el peer con el mismo rol
-            iniciarWebRTC(isInitiator);
-        }
     }
+    
+    // Procesar la señal utilizando nuestra función mejorada
+    procesarSeñalEntrante(data);
 });
 
 // Cuando el compañero se desconecta
@@ -490,6 +560,7 @@ socket.on('compañero-desconectado', () => {
         peer.destroy();
         peer = null;
         peerInitialized = false;
+        remoteStreamReceived = false;
     }
     
     remoteVideo.srcObject = null;
@@ -518,12 +589,28 @@ window._debug = {
     getPeer: () => peer,
     getLocalStream: () => localStream,
     getPendingCandidates: () => pendingCandidates,
+    getRemoteStream: () => remoteVideo.srcObject,
+    getConnectionState: () => peer ? peer._pc.connectionState : 'no peer',
+    getSignalingState: () => peer ? peer._pc.signalingState : 'no peer',
+    getIsInitiator: () => isInitiator,
     resetPeer: () => {
         if (peer) {
             peer.destroy();
             peer = null;
             peerInitialized = false;
+            remoteStreamReceived = false;
             console.log("Peer reseteado manualmente");
         }
+    },
+    recreatePeer: (asInitiator) => {
+        iniciarWebRTC(asInitiator);
+        console.log(`Peer recreado como ${asInitiator ? 'iniciador' : 'receptor'}`);
     }
 };
+
+// Añadir un log más detallado de los estados de la conexión WebRTC
+setInterval(() => {
+    if (peer && peer._pc) {
+        console.log(`Estado WebRTC - conexión: ${peer._pc.connectionState}, señalización: ${peer._pc.signalingState}, ICE: ${peer._pc.iceConnectionState}`);
+    }
+}, 5000);
